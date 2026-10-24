@@ -86,8 +86,9 @@ Backward-compatible wrapper: `$SPRITE_GEN_ROOT/.venv/bin/python $SPRITE_GEN_ROOT
 
 ## How each provider works
 
-- **codex** — spawns a fresh `codex exec --json` in an empty sandbox
-  (`--sandbox workspace-write`, `--add-dir <Codex state root>/generated_images`,
+- **codex** — spawns a fresh `codex exec --json --enable image_generation` in an empty sandbox
+  (`--enable image_generation`, `--sandbox workspace-write`,
+  `--add-dir <Codex state root>/generated_images`,
   `--skip-git-repo-check`, no `--ephemeral`). A fresh session breaks OpenAI's prompt
   cache so repeat prompts don't drag in a prior image. The session id comes from the
   `thread.started` event (older codex: a `session id:` text line — both supported); the

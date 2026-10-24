@@ -9,6 +9,8 @@ in a previous image), parse the session id from stdout, then decode the inline
 base64 deterministically. The model-reported path is never trusted.
 
 Decisive flags (each verified in the image-gen skill):
+- `--enable image_generation`  explicitly exposes the image-generation capability to
+  non-interactive `codex exec` sessions.
 - `--sandbox workspace-write`  image_gen needs write access, else the tool never registers.
 - `--add-dir <Codex state root>/generated_images`  not in the default writable set; the root is `CODEX_HOME` when set and `~/.codex` otherwise.
 - `--skip-git-repo-check`  the sandbox dir is not a git repo.
@@ -32,6 +34,7 @@ from .base import GEN_TIMEOUT_SECONDS, GenRequest, GenTimeoutError, ProviderRun,
 # codex emits. v0.140.0: response_item `image_generation_call`. v0.144.1:
 # event_msg `image_generation_end` (+status, saved_path — saved_path untrusted).
 _RESULT_TYPES = ("image_generation_call", "image_generation_end")
+_RESULT_KINDS = ("image_gen.generation",)
 # The session id that names the rollout jsonl. v0.144.1 `codex exec --json` emits
 # it as `{"type":"thread.started","thread_id":"<uuid>"}` on stdout; older codex
 # printed a `session id: <uuid>` text line. Both are canonical per version.
@@ -172,12 +175,23 @@ def _collect_inline_results(rollout: Path) -> list[str]:
             except json.JSONDecodeError:
                 continue
             payload = record.get("payload", {}) or {}
-            if payload.get("type") not in _RESULT_TYPES or not payload.get("result"):
+            result = None
+            status = None
+            if payload.get("type") in _RESULT_TYPES:
+                result = payload.get("result")
+                status = payload.get("status")
+            else:
+                # Codex 0.150.x emits the built-in image tool as an Extension
+                # item rather than the older response_item/event_msg payload.
+                item = payload.get("item", {}) or {}
+                if item.get("kind") in _RESULT_KINDS:
+                    result = item.get("result")
+                    status = item.get("status")
+            if not result:
                 continue
-            status = payload.get("status")
             if status is not None and status != "completed":
                 raise SystemExit(f"codex-gen: image_gen call ended with status={status!r} in {rollout}")
-            results.append(payload["result"])
+            results.append(result)
     return results
 
 
@@ -250,6 +264,8 @@ class CodexProvider:
             provider_binary("codex"),
             "exec",
             "--json",
+            "--enable",
+            "image_generation",
             "--sandbox",
             "workspace-write",
             "--skip-git-repo-check",

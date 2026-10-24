@@ -167,6 +167,7 @@ def test_provider_commands_use_the_single_resolved_binary(tmp_path: Path, monkey
     monkeypatch.setattr(grok_provider.subprocess, "run", fake_grok)
     grok_provider.GrokProvider().generate(GenRequest(prompt="도구", raw=grok_out), tmp_path)
     assert seen["codex"][0] == "C:/bin/codex.CMD"
+    assert seen["codex"][seen["codex"].index("--enable") + 1] == "image_generation"
     assert seen["grok"][0] == "C:/bin/grok.CMD"
 
 
@@ -196,6 +197,36 @@ def test_codex_inline_extraction_reads_both_record_types(tmp_path: Path) -> None
     assert len(results) == 2
 
     dest = tmp_path / "decoded.png"
+    codex_provider._decode_png(results[-1], dest)
+    assert gen_base.verify_png(dest) > 0
+
+
+def test_codex_inline_extraction_reads_current_extension_record(tmp_path: Path) -> None:
+    b64 = base64.b64encode(_png_bytes()).decode()
+    rollout = tmp_path / "rollout-extension.jsonl"
+    rollout.write_text(
+        json.dumps(
+            {
+                "payload": {
+                    "type": "item_completed",
+                    "item": {
+                        "type": "Extension",
+                        "kind": "image_gen.generation",
+                        "status": "completed",
+                        "result": b64,
+                        "savedPath": "/untrusted/model/path.png",
+                    },
+                }
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    results = codex_provider._collect_inline_results(rollout)
+    assert results == [b64]
+
+    dest = tmp_path / "extension-decoded.png"
     codex_provider._decode_png(results[-1], dest)
     assert gen_base.verify_png(dest) > 0
 
